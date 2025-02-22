@@ -33,13 +33,8 @@ ar_exp <- dataCar |>
 ar_exp
 
 
-## Categoría 3: Edad del asegurado.
-ed_no_rec <- dataCar |> 
-  group_by(agecat) |>
-  summarise(no_total = sum(numclaims)) |>
-  arrange(desc(no_total))
-ed_no_rec
 
+## Categoría 3: Edad del asegurado.
 ed_tuvo_rec <- dataCar |> 
   group_by(agecat) |>
   summarise(no_total = sum(clm)) |>
@@ -66,6 +61,8 @@ ant_max_mod <- dataCar |>
   summarise(val_max = max(veh_value)) |>
   arrange(desc(val_max))
 ant_max_mod
+
+
 
 ## Gráficas 
 ggplot(gen_rec, aes(x=reorder(veh_body,-monto_total), y = monto_total, fill = gender))+
