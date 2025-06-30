@@ -1,0 +1,1144 @@
+---
+title: "<span style='color:#00838f'>Más Allá del Promedio</span>"
+subtitle: "<span style='color:#00838f'>Análisis Cuantílico de los Pagos por Reclamaciones en Seguros de Gastos Médicos</span>"
+author: "Delgado Cabrera Alejandro\n\nJaramillo Delgado Yeraldin María\n\nNava Karen Idaly" 
+date: "Junio de 2025"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: TRUE
+    theme: cosmo
+    highlight: pygments
+    code_folding: show
+    css: estilos
+---
+
+```{r setup, include=FALSE}
+require(pacman)
+p_load(GWalkR,janitor,inspectdf,tidyverse,corrplot,dplyr,ggplot2,
+       skimr,readxl, patchwork, sf, rnaturalearth, rnaturalearthdata, 
+       devtools, zoo, modeest, moments, kableExtra, colorspace, 
+       FactoMineR, factoextra, cluster, statip, quantreg, lmtest)
+```
+
+# Introducción
+
+El seguro de gastos médicos se define como un plan de protección financiera ante los gastos clínicos que pueda erogar alguna enfermedad y/o accidente, a través de un respaldo económico que permite resguardar la salud y bienestar del asegurado.
+
+Tiene por objetivo satisfacer la necesidad económica derivada de la atención médica, gastos hospitalarios y demás que sean necesarios para la recuperación de la salud del individuo, en el momento en que este haya sido afectado a causa de un accidente y/o enfermedad.
+
+Esta publicación expone un análisis sobre los siniestros reportados y pagados del ramo de gastos médicos individuales en México para el año 2023. En primer lugar, se presenta una justificación teórica sobre el enfoque del análisis, posteriormente se exhibe un Análisis Exploratorio de los Datos (EDA), donde se localizan relaciones, similitudes, patrones e información relevante para su detallada interpretación. Finalmente, se hace una selección de los tres estados con mayor monto pagado para la realización del modelo que permita comprender y estimar el comportamiento de los siniestros de este sector.
+
+# Objetivo
+
+Analizar y estimar el comportamiento de los pagos en las reclamaciones mediante una regresión de tipo cuantil que permita identificar qué variables influyen con mayor peso y cómo afectan a los distintos niveles de dicho monto pagado. Esta estimación no solo contribuye con el cálculo de reservas y su validación, sino que también resulta ser una herramienta clave a la hora de evaluar la solvencia, además, desempeña un papel estratégico en la tarificación, la gestión de riesgos y la toma de decisiones tanto financieras como operativas. 
+
+Usar una regresión cuantílica permite estudiar las características que poseen ciertos factores en escenarios de alto riesgo (valores extremos) o particularmente donde se concentra la mayor parte de información, para poder distinguir si la importancia de las variables cambia dependiendo del escenario, y de ser así, que tanto varía.
+
+# Revisión de Literatura
+
+El impacto del seguro de gastos médicos en México es y ha sido una interrogante poco estudiada desde su origen, esto ha derivado de la poca cultura de la prevención que existe en el país, y en general, de la latente falta de educación financiera. Sin embargo esto se encuentra justificado medianamente en el hecho de que la mayoría de la población lo ve como un gasto no primordial, pues muchos mexicanos priorizan necesidades inmediatascomo la alimentación o la vivienda antes que la cobertura médica. Por ello, no es de sorprenderse que según la CONDUSEF, con base en datos de la INEGI, tan solo el 77% de la población mexicana está protegida por alguna institución de Seguridad Social, mientras que el resto no, y de ese porcentaje tan solo un 7% es el que cuenta con una póliza para cubrir los imprevistos ante alguna enfermedad y/O accidente que requiera atención médica.
+
+En 2006, Illescas escribió sobre la complejidad del seguro de Gastos Médicos, y detalló como esta radica en la determinación adecuada de la prima, pues se trata de seguros que implican riesgos muy altos y por ende costos muy elevados. Un claro ejemplo de lo que la autora describe es como para 2015 las aseguradoras hicieron frente a un aproximado de 900 mil accidentes y enfermedades por un costo por encima de los 35 mil millones de pesos. Si bien, existen por lo menos 32 compañías con la capacidad de operar el ramo de salud, tan solo 9 son las que concentran la mayor parte del mercado, entonces, estas compañías fueron las que asumieron esa responsabilidad. 
+
+La AMIS informó que, en los últimos cuatro años, el gasto de las aseguradoras en atención médica ha superado en algunos casos el 100% de los pagos realizados por los clientes. En 2021, estos gastos representaron el 105% de las primas pagadas por los asegurados; en 2022 se redujeron al 98%, en 2023 aumentaron al 99% y en 2024 volvieron a superar los ingresos, alcanzando el 101%. Esta situación ha generado pérdidas operativas para las aseguradoras especializadas en salud, con márgenes de ganancia mínimos que no superan el 1% o 2% de los pagos realizados.
+
+El incremento en los costos de atención médica se debe principalmente al encarecimiento de los servicios, tratamientos, materiales y dispositivos médicos, lo que ha puesto en riesgo la rentabilidad del sector asegurador. Es aquí donde surge nuestra detonante qué ajustes podrían realizarse en las pólizas con base a la siniestralidad, pues sin lugar a dudas los costos médicos seguirán aumentando en el futuro.
+
+# Análisis Exploratorio de Datos (EDA)
+
+## Carga y limpieza de los datos  
+
+```{r, results='hide'}
+# Cargar los datos
+base <- read_excel("gmi_clasif.xlsx")
+
+# Revisar y limpiar los datos
+
+# Verificar si existen vacíos
+sum(is.na(base))
+
+# Buscar y eliminar duplicados
+base |> 
+  janitor::get_dupes()
+
+base <- base |> 
+  distinct()
+```
+
+## Descripción de las variables  
+
+```{r, echo=FALSE, results='hide'}
+# Verificar la estructura de las variables
+str(base)
+
+# Cambiar formato de variables que no pueden trabajarse bajo su estructura original
+cols <- c("SEXO", "ENTIDAD", "TIPO_DE_SEGURO", "TIPO_DE_PAGO", "CATEGORIA_SINIESTRO", "CAUSA_DEL_SINIESTRO")
+base[cols] <- lapply(base[cols], factor)
+```
+
+```{r, echo=FALSE, results='hide'}
+# Comprobar el cambio
+str(base)
+```
+
+El conjunto de datos consta de 14 variables, de las cuales 6 son categóricas y 8 numéricas.
+
+**Variables categóricas:**
+
+1. *Tipo de seguro.* Cuenta con cuatro niveles: 'GM Indemnizatorios', 'GM Plan Limitado', 'GM PLan Amplio' y 'GM Plan Internacional'.
+2. *Entidad.* Sus niveles comprenden las 32 entidades federativas que conforman la República Mexicana, así como el nivel denominado 'extranjero' y 'desconocido o sin domicilio fijo'.
+3. *Sexo.* Puede tomar los valores categóricos 'femenino' o 'masculino'.
+4. *Tipo de pago.* Explica la causa por la cual se realiza el pago, estas incluyen: Ambulancia, aparatos ortopédicos, estudios de gabinete, estudios de laboratorio, gasto indemnizatorio, honorarios, honorarios de enfermeras, hospitalización, medicamentos, otros, prótesis y ortesis, y rehabiltación.
+5. *Causa del siniestro.* Identifica por lo menos 5000 causas diferentes.
+6. *Categoría del siniestro.* Es una variable elaborada a partir de la variable anterior con objeto de clasificar de forma más eficiente las causas de los siniestros en grupos más específicos y manejables. Entre sus 23 niveles se encuentran diferentes afecciones a sistemas tales como el inmunológico, respiratorio, digestivo, entre otros; exámenes y consultas, malformaciones congénitas, trastornos mentales y del comportamiento, factores externos, neoplasias, lesiones y otras causas.
+
+**Variables numéricas:**
+
+1. *Edad.* Comprende valores del 0 al 102.
+2. *Número de siniestros.* Con valores de 1 a 74.
+3. *Número de reclamaciones.* Cuyos valores abarcan de 1 a 97.
+4. *Monto reclamado.* Se trata de la cantidad que el asegurado reclama por los siniestros que ha sufrido. Con un mínimo de -964,693.6 y un máximo de 30,612,841.
+5. *Monto de deducible.* Refiere a la cantidad que el asegurado debe pagar por los daños o costos de reposición. Con un mínimo de 0 y un máximo de 644,074.2
+6. *Monto de coaseguro.* Es el porcentaje del costo total que el asegurado debe pagar después de que se haya cubierto el deducible. Su rango de valores integra un mínimo de 0 y un maximo de 934,873.1
+7. *Monto pagado.* Refiere al monto total que la aseguradora paga por los gastos médicos después de haber aplicado los deducibles y el coaseguro. Con un mínimo de 0.5 y un máximo de 30,612,841.
+8. *Monto de reaseguro.* Es la cantidad que la aseguradora ha transferido a otra entidad para cubrir parte del riesgo. Con un máximo de 264,984.5
+
+
+## Estadísticas descriptivas  
+
+La variable de interés a analizar es el monto pagado, pues resulta ser el efectivo ante el monto reclamado, lo cual permite conocer cuanto están pagando realmente las aseguradoras por los gastos médicos de los asegurados siniestrados.
+
+```{r, echo=FALSE, results='hide'}
+# Resúmenes de los datos
+summary(base$MONTO_PAGADO)
+skim(base$MONTO_PAGADO)
+
+# Moda
+moda <- mfv(base$MONTO_PAGADO)
+print(paste("Moda", moda))
+
+# Coeficiente de variación
+coef_var <- sd(base$MONTO_PAGADO)/abs(mean(base$MONTO_PAGADO))*100
+print(paste("Coeficiente de variación", coef_var))
+
+# Asimetría
+asimetria <- skewness(base$MONTO_PAGADO)
+print(paste("Asimetría:", asimetria))
+
+# Curtosis
+curtosis <- kurtosis(base$MONTO_PAGADO)
+print(paste("Curtosis:", curtosis))
+```
+
+- Media: 13,223\n
+- Mediana 2,700\n
+- Moda: 700\n
+- Desviación estándar: 158,617.9\n
+- Monto mínimo: 0\n
+- Monto máximo: 30,612,841
+- Cuantil Q1: 1,034
+- Cuantil Q3: 7,200
+- Coeficiente de variación: 1199.58
+- Asimetría: 95.26
+- Curtosis: 14043.51
+
+## Visualización de datos  
+
+```{r, echo=F}
+# Edad y Sexo
+e_h <- base |>
+  select(EDAD, SEXO) |>
+  filter(SEXO == 'Masculino')
+
+e_m <- base |>
+  select(EDAD, SEXO) |>
+  filter(SEXO == 'Femenino')
+
+g1 <- ggplot(e_h, aes(x=EDAD)) +
+  theme_minimal() +
+  geom_histogram(fill = 'cadetblue3', color = "#b2dfdb", bins = 30) +
+  labs(title = 'Hombres', y = 'No. de Personas', x = "Edad") +
+  theme(plot.title = element_text(family = "serif", size = 13, 
+                                  hjust = 0.6, vjust = 1), 
+        plot.title.position = "plot",
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75")) + 
+  scale_y_continuous(breaks = seq(0, 5580, by = 1000), limits = c(0, 5580))
+
+g2 <- ggplot(e_m, aes(x=EDAD)) +
+  geom_histogram(fill='#b2dfdb', color = "cadetblue3", bins = 30) +
+  theme_minimal() +
+  labs(title = 'Mujeres', y = 'No. de Personas', x = "Edad") +
+  theme(plot.title = element_text(family = "serif", size = 13, 
+                                  hjust = 0.6, vjust = 1), 
+        plot.title.position = "plot",
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75")) 
+
+g1 + g2 + 
+  plot_annotation(title = 'DISTRIBUCIÓN POR EDAD',
+                  theme = theme(plot.title = 
+                                  element_text(size = 17, family = "serif",
+                                               hjust = 0.5,
+                                               color = "#00838f")))
+```
+
+El gráfico muestra una base poblacional joven bastante notable. La presencia de mujeres es más estable en edades mayores, lo que sugiere mayor longevidad en contraste con la de los hombres.
+
+```{r, echo=F}
+# Tipo de seguro por edad promedio
+ts_e <- base |> 
+  group_by(TIPO_DE_SEGURO) |>
+  summarise(ep = mean(EDAD), ep.et = sprintf("%.2f", mean(EDAD))) |>
+  arrange(desc(ep))
+
+ggplot(base, aes(x = TIPO_DE_SEGURO, y = EDAD, 
+                 fill = TIPO_DE_SEGURO)) +
+  stat_boxplot(geom = "errorbar", width = 0.25) +
+  geom_boxplot() + # Boxplot para mostrar la distribución de edades
+  geom_point(data = ts_e, aes(y = ep))+
+  geom_text(data =  ts_e, aes(y = ep, label = ep.et), size = 2, 
+            vjust = 1.5)+
+  theme_minimal() +
+  labs(title = "DISTRIBUCIÓN DE EDADES POR TIPO DE SEGURO",
+       x = "Tipo de Seguro", y = "Edad") +
+  theme(plot.title = element_text(family = "serif", size = 17, 
+                                  hjust = 0.5, vjust = 1, 
+                                  color = "#00838f"), 
+        plot.title.position = "plot",
+        axis.title.x = element_text(family = "serif", vjust = -1),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75"),
+        legend.title = element_text(family = "serif"),
+        legend.position = "none") +
+  scale_fill_manual(values = c("lightcyan1", "lightcyan2", 
+                               "lightcyan3", "lightcyan4")) +
+  guides(fill = guide_legend(title = "Tipo de seguro"), 
+         color = guide_legend(title = NULL))
+```
+
+El gráfico sugiere que los seguros indemnizatorios parecen ser más populares entre personas jóvenes. Por otra parte, los planes amplios, internacionales y limitados están dirigidos a adultos mayores, lo cual puede deberse al tipo de cobertura y costo. Además, existe bastante dispersión en todos los planes, lo que sugiere diversidad etaria en cada tipo.
+
+```{r, echo=F}
+# Tipo de pago por monto reclamado promedio.
+tp_r <- base |> 
+  group_by(TIPO_DE_PAGO) |>
+  summarise(mrp = mean(MONTO_RECLAMADO)) |>
+  arrange(desc(mrp))
+
+
+ggplot(tp_r, aes(x = mrp, y = TIPO_DE_PAGO, fill = TIPO_DE_PAGO)) +
+  geom_bar(stat = "identity") + 
+  theme_minimal() +
+  labs(title = "MONTO RECLAMADO PROMEDIO POR TIPO DE PAGO",
+       x = "Monto Reclamado Promedio",
+       y = "Tipo de Pago",
+       fill = NULL) +
+  theme(plot.title = element_text(family = "serif", size = 17, 
+                                  hjust = 0.6, vjust = 1, 
+                                  color = "#00838f"), 
+        plot.title.position = "plot",
+        axis.title.x = element_text(family = "serif", vjust = -1),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75"),
+        legend.title = element_text(family = "serif"),
+        legend.position = "none") +
+  scale_fill_manual(values = c("#ccf1e7", "#a2d9ce", "#89cec3", "#70c5b0",
+                               "#73c6b6", "#45b39d", "#16a085", "#138d75",
+                               "#117a65", "#0e6655", "#0b5345", "#083a30"))
+
+
+```
+
+Destacan tres categorías con montos significativamente altos: hospitalización, honorarios de enfermeras y aparatos ortopédicos, lo que indica que estos servicios representan los principales costos promedio por siniestro. En contraste, servicios como rehabilitación, medicamentos y ambulancia muestran montos más bajos, sugiriendo menor impacto económico por caso en estas áreas específicas.
+
+```{r, results='hide', echo=F}
+# Entidad por numero total de siniestros
+e_nts <- base |>
+  group_by(ENTIDAD) |>
+  summarise(nts = sum(NUMERO_DE_SINIESTROS)) |>
+  arrange(desc(nts))
+e_nts
+e_nts1<- e_nts
+e_nts1$ENTIDAD <- as.character(e_nts1$ENTIDAD)
+e_nts1[4,1]<-'México'
+e_nts1[1,1]<-'Distrito Federal'
+
+e_nts1$ENTIDAD <- factor(e_nts1$ENTIDAD)
+str(e_nts1)
+e_nts1
+mexico_estados <- ne_states(country = "Mexico", returnclass = "sf")
+mexico_estados <- merge(mexico_estados, e_nts1, by.x = "name", 
+                        by.y = "ENTIDAD", all.x = TRUE)
+
+ggplot(data = mexico_estados) +
+  geom_sf(aes(fill = nts)) +
+  theme(plot.title = element_text(family = "serif", size = 17, 
+                                  hjust = 0.5, vjust = 3,
+                                  color = "#00838f"),
+        plot.title.position = "plot",
+        legend.title = element_text(family = "serif")) +
+  ggtitle("NÚMERO DE SINIESTROS POR ESTADO") +
+  scale_fill_gradientn(name = "Número de\nSieniestros",
+                       colors = c("#bbe4b5","#84cfba", "#57bec0", "#34a8c2",
+                                  "#1d8cbe", "#2166ab", "#23469c", 
+                                  "#1c2d83")) 
+  #scale_fill_viridis_c(option = "virdis", direction = -1)
+```
+
+Se evidencia una mayor concentración de casos en entidades como Ciudad de México, Estado de México, Jalisco y Nuevo León, lo cual puede estar relacionado con factores como la densidad poblacional, acceso a servicios médicos, o incluso la naturaleza misma del seguro. Los estados con menos siniestros tienden a estar en zonas más rurales o con menor población asegurada.
+
+```{r, results='hide', echo=F}
+# Entidades por monto pagado total
+e_mpt <- base |>
+  group_by(ENTIDAD) |>
+  summarise(mpt = sum(MONTO_PAGADO)) |>
+  arrange(desc(mpt))
+e_mpt
+
+e_mpt1<- e_mpt
+e_mpt1$ENTIDAD <- as.character(e_mpt1$ENTIDAD)
+e_mpt1[10,1]<-'México'
+e_mpt1[1,1]<-'Distrito Federal'
+e_mpt1$ENTIDAD <- factor(e_mpt1$ENTIDAD)
+str(e_mpt1)
+e_mpt1$mpt<-e_mpt1$mpt/1000000
+e_mpt1
+mexico_esta2 <- ne_states(country = "Mexico", returnclass = "sf")
+mexico_esta2 <- merge(mexico_estados, e_mpt1, by.x = "name", 
+                        by.y = "ENTIDAD", all.x = TRUE)
+
+ggplot(data = mexico_esta2) +
+  geom_sf(aes(fill = mpt)) +
+  theme(plot.title = element_text(family = "serif", size = 17, 
+                                  hjust = 0.5, vjust = 3,
+                                  color = "#00838f"),
+        plot.title.position = "plot",
+        legend.title = element_text(family = "serif")) +
+  ggtitle("MONTO PAGADO TOTAL POR ESTADO") +
+  scale_fill_gradientn(name = "Monto Pagado\nen MDP",
+                       colors = c("#bbe4b5","#84cfba", "#57bec0", "#34a8c2",
+                                  "#1d8cbe", "#2166ab", "#23469c", 
+                                  "#1c2d83")) 
+
+```
+
+Partiendo de la idea del gráfico anterior es evidente que si la mayor concentración de siniestros se encuentra en las entidades de Jalisco, Nuevo León y CDMX, el monto pagado también será mayor para estas entidades. 
+
+```{r, echo=F}
+# Contribución del deducible y coaseguro al monto reclamado
+cdc_mr <- base |>
+  group_by(ENTIDAD) |>
+  summarise(dt = sum(MONTO_DE_DEDUCIBLE), ct = sum(MONTO_DE_COASEGURO),
+            mrt = sum(MONTO_RECLAMADO)) |>
+  arrange(desc(mrt))
+cdc_mr <- mutate(cdc_mr, contribucion = dt + ct)
+tp <- head(cdc_mr, 10)
+tp$mrt <- tp$mrt/1000000
+tp$contribucion<- tp$contribucion/1000000
+
+g3 <- ggplot(tp, aes(x=ENTIDAD,y=mrt)) + 
+  geom_bar(stat = 'identity', position = 'dodge', fill='#b2dfdb', 
+           color = "cadetblue3") +
+  theme_minimal() +
+  theme(plot.title = element_text(family = "serif", size = 13, 
+                                  hjust = 0.6, vjust = 1), 
+        plot.title.position = "plot",
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75")) +
+  labs(title = 'Monto Total Reclamado', y = 'MRT en Millones',
+       x = "Entidad")
+
+
+
+g4 <- ggplot(tp, aes(x=ENTIDAD,y=contribucion)) + 
+  geom_bar(stat = 'identity', position = 'dodge', fill='cadetblue3', 
+           color = "#b2dfdb") +
+  theme_minimal() +
+  theme(plot.title = element_text(family = "serif", size = 13, 
+                                  hjust = 0.7, vjust = 1), 
+        plot.title.position = "plot",
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75")) +
+  labs(title = 'Deducible y Coaseguro', 
+       y = 'Contribución en Millones', x = "Entidad")
+  
+  
+
+g3 + g4 + 
+  plot_annotation(title = 'CONTRIBUCIÓN DEL DEDUCIBLE Y COASEGURO\nAL MONTO RECLAMADO',
+                  theme = theme(plot.title = 
+                                  element_text(size = 17, family = "serif",
+                                               hjust = 0.5,
+                                               color = "#00838f")))
+```
+
+La categoría 'Extranjero' destaca visiblemente, presenta mayores costos reclamados y, por tanto, mayores aportes del asegurado. Esto sugiere gastos médicos significativamente más altos fuera del país. Ahora bien, entidades como CDMX, Nuevo León y Jalisco también tienen montos altos, indicando mayor concentración de servicios médicos costosos. Se puede argumentar que, donde se reclama más, también se paga más de deducible y coaseguro.
+
+```{r, echo=F}
+# Monto reclamado por categoría
+m_by_cat <- base %>% 
+  group_by(CATEGORIA_SINIESTRO) %>% 
+  summarise(mt = sum(MONTO_RECLAMADO)) %>% 
+  arrange(desc(mt))
+t5_m_by_cat <- head(m_by_cat, 5)
+
+p_t5_m_by_cat <- t5_m_by_cat %>% 
+  mutate(pcnt = `mt` / sum(`mt`)) %>% 
+  mutate(etiquetas = scales::percent(pcnt, accuracy = 0.01))
+
+ggplot(p_t5_m_by_cat, aes(x = "", y = pcnt, fill = CATEGORIA_SINIESTRO)) +
+  geom_col() +
+  geom_text(aes(label = etiquetas),
+            position = position_stack(vjust = 0.5),
+            size = 3) +
+  coord_polar(theta = "y") +
+  theme_void() +
+  theme(plot.title = element_text(family = "serif", size = 17,
+                                  color = "#00838f", hjust = 0.5, 
+                                  vjust = -1),
+        plot.title.position = "plot",
+        legend.title = element_text(family = "serif")) +
+  labs(title = "TOP 5 CATEGORÍAS CON MAYOR MONTO\nDE RECLAMACIONES",
+       fill = "Caategoría del Siniestro") +
+  guides(fill = guide_legend(title = "Categoría del Siniestro")) +
+  scale_fill_manual(values = c("#ccf1e7", "#a2d9ce", "#89cec5", "#70c5b0",
+                               "#45b39d"))
+```
+
+Como es fácil notar 'Afecciones al Sistema Digestivo' se presenta como la cateoría con mayor monto de reclamaciones, esto hace sentido dado que es una de las categorías más grandes. Engloba distintas afecciones tales como gastritis, cálculos biliares, apendicitis, solo por mencionar algunas. Dicha categoría es seguida por 'Lesiones y envenenamientos', nuevamente, su posición hace sentido pues esta categoría incluye esguinces, torceduras, intoxicaciones, entre otras; normalmente este tipo de situaciones son tratadas con calidad de urgencia en hospitales, esto permite asumir altos montos de reclamaciones.  
+
+```{r, echo=F}
+# Top 5 causas con más reclamaciones 
+cr <- base |>
+  group_by(CAUSA_DEL_SINIESTRO) |>
+  summarise(nr = sum(NUMERO_DE_RECLAMACIONES)) |>
+  arrange(desc(nr))
+
+cr5<- head(cr,5)
+
+cr5_per <- cr5 %>% 
+  mutate(pcnt = `nr` / sum(`nr`)) %>% 
+  mutate(etiquetas = scales::percent(pcnt, accuracy = 0.01))
+
+ggplot(cr5_per, aes(x = "", y = pcnt, fill = CAUSA_DEL_SINIESTRO)) +
+  geom_col() +
+  geom_text(aes(label = etiquetas),
+            position = position_stack(vjust = 0.5),
+            size = 3) +
+  coord_polar(theta = "y") +
+  theme_void() +
+  theme(plot.title = element_text(family = "serif", size = 17,
+                                  color = "#00838f", hjust = 0.5, 
+                                  vjust = -1),
+        plot.title.position = "plot",
+        legend.title = element_text(family = "serif")) +
+  labs(title = "TOP 5 CAUSAS CON MAYOR NÚMERO DE\nRECLAMACIONES",
+       fill = "Causa del Siniestro") +
+  guides(fill = guide_legend(title = "Causa del Siniestro")) +
+  scale_fill_manual(values = c("#ccf1e7", "#a2d9ce", "#89cec3", "#70c5b0",
+                               "#45b39d"))
+```
+
+Los nacidos pretérmino son aquellos recién nacidos que llegan al mundo antes de completar las 37 semanas de gestación. En este análisis dicha causa se presenta como la número 1 en reclamaciones, seguida del resfriado común que, como bien lo dice su numbre, al tratarse de una enfermedad común presentará alta incidencia.
+
+<p style="color:#0097a7; font-size:22px; text-align: center;">ANÁLISIS DE CORRELACIÓN </p>
+
+```{r, echo=F}
+
+base_n <- base |>
+  select(where(is.numeric))
+colnames(base_n) <- c("Edad", "No.Siniestros", "No.Reclamaciones", 
+                      "Mon.Reclamado", "Mon.Deducible", "Mon.Coaseg", 
+                      "Mon.Pagado", "Mon.Reaseguro")
+cor_matrix <- cor(base_n)
+corrplot::corrplot(cor(base_n),method = 'shade', col = COL2("BrBG"),  
+                   addCoef.col = 'gray28', number.cex = 0.7,
+                   tl.col = "black", tl.cex = 0.9)
+
+
+```
+
+## Identificación de datos atípicos  
+
+```{r}
+## De forma tradicional con cuantiles
+
+# Monto Pagado
+umbral_mp <- quantile(base$MONTO_PAGADO, 0.95, na.rm = T)
+atipicos_mp <-base$MONTO_PAGADO[base$MONTO_PAGADO>umbral_mp]
+normales_mp <- base$MONTO_PAGADO[base$MONTO_PAGADO<=umbral_mp]
+
+nor_mp <- as.data.frame(normales_mp)
+ggplot(nor_mp, aes(normales_mp))+
+  geom_density(color = "paleturquoise4", linewidth = 1.2)+ 
+  theme_minimal() +
+  theme(plot.title = element_text(family = "serif", size = 17, 
+                                  hjust = 0.5, vjust = 1, 
+                                  color = "#00838f"), 
+        plot.title.position = "plot",
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75")) +
+  labs(title = 'DATOS ATÍPICOS DEL MONTO PAGADO POR CUANTILES', 
+       y = 'Densidad', x = "Monto Pagado")
+
+# Estos datos podrían seguir alguna distribución, por lo que valdría la pena revisar
+
+#Edad
+umbral_ed <- quantile(base$EDAD, 0.95, na.rm = T)
+atipicos_ed <-base$EDAD[base$EDAD>umbral_ed]
+normales_ed <- base$EDAD[base$EDAD<=umbral_ed]
+
+nor_ed <- as.data.frame(normales_ed)
+
+ggplot(nor_ed, aes(normales_ed)) +
+  geom_density(color = "paleturquoise4", linewidth = 1.2) + 
+  theme_minimal() +
+  theme(plot.title = element_text(family = "serif", size = 17, 
+                                  hjust = 0.5, vjust = 1, 
+                                  color = "#00838f"), 
+        plot.title.position = "plot",
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75")) +
+  labs(title = 'DATOS ATÍPICOS DE LA EDAD POR CUANTILES', 
+       y = 'Densidad', x = "Edad")
+# Los valores atipicos de edad no son tan relevantes
+```
+```{r}
+
+## Con la distancia de Mahalanobis
+
+dist_mah <- mahalanobis(base_n, colMeans(base_n), cov(base_n))
+out <- c(rep(NA, nrow(base_n)))
+umbral_mah <- qchisq(0.95, df = ncol(base_n)) 
+out<- ifelse(dist_mah>umbral_mah,'Si','No')
+sum(out=='Si')
+base_nat <- data.frame(base_n, out)
+base_nat <- base_nat |>
+  filter(out=='No')
+# Vemos que con la distancia de Mahalanobis son 5204 datos, menos que si solo nos enfocamos en los atipicos de MONTO_PAGADO
+
+ggplot(base_nat, aes(Mon.Pagado)) +
+  geom_density(color = "paleturquoise4", linewidth = 1.2)+ 
+  theme_minimal() +
+  theme(plot.title = element_text(family = "serif", size = 17, 
+                                  hjust = 0.5, vjust = 1, 
+                                  color = "#00838f"), 
+        plot.title.position = "plot",
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75")) +
+  labs(title = 'DATOS ATÍPICOS DEL MONTO PAGADO POR\nDISTANCIA DE MAHALONOBIS', 
+       y = 'Densidad', x = "Monto Pagado")
+```
+
+## Aplicación de técnicas multivariantes para reducir dimensiones  
+
+Es posible reducir dimensiones, para ello se implementará un Análisis de Componentes Principales (PCA); sin embargo, no se descarta la posibilidad de utilizar  algo un poco más especializado, como lo es un Análisis Factorial para Datos Mixtos (FAMD), para estudios posteriores.
+
+# Metodología
+
+Primeramente, se realizó un análisis de literatura para identificar los datos de interés. Una vez definido el tema, se procedió a buscar una base de datos adecuada, la cual se obtuvo de la página web de la CNSF, específicamente del conjunto de datos correspondiente al año 2023 sobre Gastos Médicos Individuales.
+
+La base de datos fue importada a RStudio (donde se trabaja el lenguaje de programación R), y posteriormente se llevó a cabo su limpieza. Cabe destacar que este proceso fue facilitado por la ausencia de datos vacíos. En consecuencia, se eliminaron los registros duplicados y, como parte final del proceso de limpieza, se analizó la estructura de los datos. Durante este análisis, se identificó que algunas variables no contaban con la estructura adecuada, por lo que se realizaron las correcciones necesarias para seguir adelante con el trabajo.
+
+Con la base de datos limpia, lo primero que se hizo fue obtener estadísticas descriptivas, incluyendo medidas como la media, la moda y el valor máximo, entre otras, con respecto a la variable de interés principal: ‘Monto Pagado’. Asimismo, se realizaron consultas en las que se promediaron o acumularon valores, y posteriormente se generaron gráficos que facilitaron la interpretación de los datos.
+
+También se identificaron valores atípicos, lo cual se realizó mediante dos enfoques. El primero fue un método empírico, en el que se calculó el percentil 95 de los valores del monto pagado. El resultado indicó que poco más de 6,000 registros se encuentran por encima de este umbral. El segundo método fue la distancia de Mahalanobis, que mostró que hay poco más de 5,000 datos atípicos. Por lo tanto, se concluyó que la base de datos contiene entre 5,000 y 6,000 valores atípicos.
+
+Finalmente, con base en la revisión previa, se determinó que lo ideal sería aplicar una regresión cuantílica. Sin embargo, para poder implementarla de forma eficiente, primero se busca reducir la cantidad de variables mediante un Análisis de Componentes Principales (PCA), el cual se aplicará únicamente a las variables cuantitativas de la base de datos. Esta técnica permite identificar los componentes principales que explican la mayor varianza entre los datos, a partir de la estandarización de las variables. Es importante mencionar que las variables categóricas no se incluirán en esta etapa de reducción dimensional, pero sí se utilizarán posteriormente en la aplicación del modelo.
+
+# Propuesta de Modelo: Regresión Cuantílica
+
+## Descripción del modelo
+
+La regresión cuantílica es una técnica estadística que permite estimar el efecto de una o más variables explicativas sobre diferentes cuantiles (percentiles) de la distribución condicional de una variable respuesta.
+
+A diferencia de la regresión lineal tradicional, que estima el valor medio (esperado) de la variable dependiente dado un conjunto de variables predictoras, la regresión cuantílica permite modelar, por ejemplo, la mediana (cuantil 0.5), el percentil 25 (cuantil 0.25) o el percentil 90 (cuantil 0.9), proporcionando así una descripción más completa de la relación entre las variables.
+
+
+## Justificación de la elección del modelo  
+
+Dada la naturaleza asimétrica de la variable dependiente, especialmente sus valores atípicos, surge la necesidad de analizar la relevancia de las variables independientes y como afectan directamente a los montos pagados. Este análisis observa diversas secciones de la distribución condicional, prestando atención de forma particular tanto a las regiones donde se concentra la mayor parte de la información como a los valores extremos (ubicados en la cola derecha). Si bien estos representan escenarios distintos, se busca abordarlos dentro de un mismo marco analítico, lo cual exige el uso de un modelo que sea flexible y capaz de capturar dicha heterogeneidad, sin las restricciones que implican los supuestos tradicionales de la regresión lineal.
+
+Es por ello por lo que la regresión cuantílica se presenta como la herramienta más acertada, pues permite modelar diferentes cuantiles de la distribución. Esto facilita un análisis más detallado en cada punto de interés, elimina la necesidad de cumplir con los rigurosos supuestos de la regresión tradicional, tales como la normalidad o la homocedasticidad, y permite la comparación entre distintos escenarios, así como entre los estados más relevantes para la variable estudiada.
+
+## Supuestos del modelo  
+
+Como se mencionó con anterioridad, este modelo no impone supuestos rigurosos; sin embargo, eso no significa que no los posea, simplemente estos son más flexibles y, en general, más fáciles de cumplir en comparación con los de una regresión tradicional.
+
+Los tres supuestos fundamentales que caracterizan al modelo son:
+
+- No multicolinealidad perfecta: la cual no debe existir entre las variables independientes, es decir, $Corr(X)\approx 0$.
+
+- Linealidad condicional de los cuantiles: el modelo supone que el cuantil de orden $\tau$ de Y, dado X, puede describirse como una combinación lineal del vector de variables X, es decir $\beta_{\tau i}  \neq 0$.
+
+- Independencia de las observaciones: se asume que son independientes entre sí, aunque no necesariamente idénticamente distribuidas.
+
+Cabe mencionar que, en este tipo de relación, no se requiere asumir homocedasticidad ni que el error se distribuya de forma normal. Pero, aunque estos supuestos no son necesarios, si es posible realizar cálculos para estimar el intervalo de confianza y aplicar ciertas pruebas estadísticas.
+
+## Parámetros y su estimación  
+
+Como en cualquier modelo de regresión, el parámetro fundamental es $\beta$; sin embargo, algunos autores agregan un parámetro adicional, si bien este solo se utiliza para una prueba, se considera parte del modelo dado que se necesita hacer una estimación para obtenerlo.
+
+- **Coeficiente de regresión** $\beta_\tau$ 
+
+<div style="margin-left: 2em;">Se calcula de la siguiente forma:
+
+$$\hat{\beta}_\tau = \min_{\beta_\tau \in \mathbb{R}} \left[ \sum_{Y_i \geq X_i\beta_\tau} \tau(Y_i - X_i\beta_\tau) + \sum_{Y_i < X_i\beta_\tau} (\tau - 1)(Y_i - X_i^T\beta_\tau) \right]$$
+
+Donde si usamos la función de pérdida, la expresión se escribe de la siguiente forma:
+
+$$\hat{\beta}_\tau = \min_{\beta_\tau \in \mathbb{R}} \left[\sum_{i}^n \rho_\tau(Y_i - X_i^T\beta_\tau)\right]$$
+
+*Nota:* La función de pérdida de un cuantil o función de chequeo se define de la siguiente manera:
+
+$$\rho_\tau(u) = u(\tau - I(u < 0)) = \begin{cases}
+u\tau, & \text{si } u \geq 0\\
+u(\tau - 1), & \text{si } u < 0
+\end{cases}$$</div> 
+
+- **Varianza o matriz de covarianzas de** $\hat{\beta}_\tau$:
+
+<div style="margin-left: 2em; text-align: justify;">Aunque existe una fórmula, en la práctica no se conoce la densidad condicional $f_{Y|X}(\cdot)$, por lo que comúnmente se estima usando métodos tales como estimador de Kernel o Bootstrap, siendo este último el más común.</div> 
+
+## Pruebas estadísticas para su validación  
+
+Cuenta con las mismas pruebas estadísticas esenciales propias de cualquier modelo de regresión, aunque presenta ciertas modificaciones acordes a su estructura y características:
+
+1. *Significancia del modelo:* Validación de los coeficientes a través del estadístico tradicional $t = \frac{\hat{\beta}_\tau}{SE[\hat{\beta}_\tau]}$ donde t sigue una distribución Normal (0,1). 
+
+2. *Bondad de ajuste del modelo* $Pseudo-R^2$*:* Se calcula con la siguiente fórmula
+
+$$pseudo-R^2 = R^1 = 1 - \frac{\hat{V}(\tau)}{\tilde{V}(\tau)}$$
+
+<div style="margin-left: 2em;">Donde:
+
+$\hat{V}(\tau) = \left[\sum_{i}^n \rho_\tau(Y_i - X_i^T\hat{\beta}_\tau)\right]$ (Residuos del modelo propuesto)
+
+$\tilde{V}(\tau) = \left[\sum_{i}^n \rho_\tau(Y_i - 1)\right]$ (Residuos de un modelo nulo)</div>
+
+
+3. *Comparación entre Cuantiles:* Con una prueba Wald, para validar si existen diferencias significativas entre los coeficientes estimados para cada cuantil. 
+
+# Resultados y Discusión
+
+## Selección y comparativa de entidades
+
+Como fue mencionado en la sección de metodología, antes de proceder con la implementación del modelo es necesario realizar una preparación adicional los datos para llevar a cabo el análisis. En primer lugar, se seleccionarán tres entidades: Ciudad de México, Jalisco y Nuevo León. Estas entidades fueron elegidas por ser las que registran un mayor monto pagado acumulado, lo cual las posiciona como las más representativas para analizar el comportamiento observado. La selección hace sentido ya que se trata de las entidades con los niveles de desarrollo y estabilidad más altos del país, además, cuentan con una economía sólida y diversificada, permitiendo que su población esté asegurada en distintos ramos.
+
+El objetivo de enfocarse en dichas entidades es que al ser las más representativas, si su comportamiento sigue cierto patrón, las demás también lo harán, lo que permite generalizar los resultados, no obstante, en caso de no ser así, se buscará encontrar los factores que provoquen dichas diferencias.
+
+```{r}
+## Seleccionar los estados de interés de nuestra base original --------
+b_CDMX <- base[base$ENTIDAD == "Ciudad de México",  
+               !names(base) %in% c("ENTIDAD", "CAUSA_DEL_SINIESTRO") ]
+
+b_NL <- base[base$ENTIDAD == "Nuevo León",
+             !names(base) %in% c("ENTIDAD", "CAUSA_DEL_SINIESTRO") ]
+
+b_J <- base[base$ENTIDAD == "Jalisco", 
+            !names(base) %in% c("ENTIDAD", "CAUSA_DEL_SINIESTRO") ]
+```
+
+Después de seleccionar de la base de datos las entidades deseadas, se realiza una breve comparativa para discernir si la siniestralidad cambia dependiendo el estado, donde se revisa la variable “Categoría del siniestro”, en esta comparativa aparecen las categorías más comunes y su monto pagado promedio; además, se muestra la relación entre la edad y el número de siniestros que se presentan en esta.
+
+```{r}
+## Consultas para comparar los estados 
+
+# Top 5 categorías de siniestros más comunes
+
+##Ciudad de Mexico 
+sc_CDMX <- b_CDMX %>%
+  group_by(CATEGORIA_SINIESTRO) %>%
+  summarise(Cantidad = n()) %>%
+  arrange(desc(Cantidad)) %>%
+  head(5)
+
+## Nuevo Leon 
+sc_NL <- b_NL %>%
+  group_by(CATEGORIA_SINIESTRO) %>%
+  summarise(Cantidad = n()) %>%
+  arrange(desc(Cantidad)) %>%
+  head(5)
+
+##Jalisco
+sc_J <- b_J %>%
+  group_by(CATEGORIA_SINIESTRO) %>%
+  summarise(Cantidad = n()) %>%
+  arrange(desc(Cantidad)) %>%
+  head(5)
+```
+
+
+```{r, echo=FALSE}
+sc_CDMX$Entidad <- "Ciudad de México"
+sc_NL$Entidad <- "Nuevo León"
+sc_J$Entidad <- "Jalisco"
+
+sc <- bind_rows(
+  sc_CDMX %>% mutate(Estado = "Ciudad de México"),
+  sc_NL %>% mutate(Estado = "Nuevo León"),
+  sc_J %>% mutate(Estado = "Jalisco")
+)
+
+
+ggplot(sc, aes(x = Cantidad, y = reorder(CATEGORIA_SINIESTRO, Cantidad), fill = Entidad)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal()+
+  theme(plot.title = element_text(family = "serif", size = 17,
+                                  color = "#00838f", hjust = 0.5, 
+                                  vjust = -1),
+        plot.title.position = "plot",
+        legend.title = element_text(family = "serif"),
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 6, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 6),
+        axis.line = element_line(color = "gray75")) +
+  labs(title = "CATEGORÍAS DE SINIESTROS MÁS COMÚNES POR ENTIDAD",
+       x = "Cantidad de Casos",
+       y = "Categoría del Siniestro") +
+  scale_fill_manual(values = c("#bbe4b5","#84cfba", "#57bec0"))
+
+```
+
+Como es posible observar, tan solo dos de las tres entidades seleccionadas comparten el mismo top 5; estas son Nuevo León y CDMX, para Jalisco la quinta posición difiere.  Cabe destacar que existe una diferencia notable entre la cantidad de reportes de CDMX en contraste con los de las otras dos entidades, pues CDMX presenta poco más de 50 mil observaciones, mientras que los otros dos aproximadamente presentan 15 mil respectivamente.
+
+```{r}
+# Monto promedio pagado por categoria
+
+## Entidades
+
+mp_CDMX <- b_CDMX %>%
+  group_by(CATEGORIA_SINIESTRO) %>%
+  summarise(mpp = mean(MONTO_PAGADO, na.rm = TRUE)) %>%
+  arrange(desc(mpp))
+
+mp_NL <- b_NL %>%
+  group_by(CATEGORIA_SINIESTRO) %>%
+  summarise(mpp = mean(MONTO_PAGADO, na.rm = TRUE)) %>%
+  arrange(desc(mpp))
+
+mp_J <- b_J %>%
+  group_by(CATEGORIA_SINIESTRO) %>%
+  summarise(mpp = mean(MONTO_PAGADO, na.rm = TRUE)) %>%
+  arrange(desc(mpp))
+```
+
+
+```{r, echo=FALSE}
+mp_CDMX$Entidad <- "Ciudad de México"
+mp_NL$Entidad   <- "Nuevo León"
+mp_J$Entidad    <- "Jalisco"
+
+mp_todas <- bind_rows(mp_CDMX, mp_NL, mp_J)
+
+ggplot(mp_todas, aes(x = reorder(CATEGORIA_SINIESTRO, mpp), y = mpp, fill = Entidad)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  facet_wrap(~Entidad, scales = "free_x") +
+  coord_flip() +
+  theme_minimal()+
+  theme(plot.title = element_text(family = "serif", size = 17,
+                                  color = "#00838f", hjust = 0.5, 
+                                  vjust = -1),
+        plot.title.position = "plot",
+        legend.title = element_text(family = "serif"),
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 6, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 6),
+        axis.line = element_line(color = "gray75")) +
+  labs(title = "CATEGORÍAS DE SINIESTROS POR MONTO PAGADO",
+       x = "Cetegoría del Siniestro",
+       y = "Monto Pagado Promedio") +
+  scale_fill_manual(values = c("#bbe4b5","#84cfba", "#57bec0"))
+
+```
+
+Es fácil notar que, para las tres entidades las categorías con un mayor monto promedio pagado corresponden a ‘Malformaciones congénitas’ y ‘Condiciones perinatales’, lo cual, al ser contrastado con la gráfica anterior resulta interesante, pues la categoría con mayor número de siniestros reportados es ‘Lesiones y envenenamientos’ pero esta se encuentra casi al final de la gráfica actual.
+
+
+```{r}
+#Relación entre edad y número de siniestros
+
+# Ciudad de Mexico
+es_CDMX <- b_CDMX %>%
+  group_by(EDAD) %>%
+  summarise(
+    Promedio_Siniestros = mean(NUMERO_DE_SINIESTROS, na.rm = TRUE),
+    No_Personas = n()
+  ) %>%
+  arrange(EDAD)
+
+# Nuevo León 
+es_NL <- b_NL %>%
+  group_by(EDAD) %>%
+  summarise(
+    Promedio_Siniestros = mean(NUMERO_DE_SINIESTROS, na.rm = TRUE),
+    No_Personas = n()
+  ) %>%
+  arrange(EDAD)
+
+#Jalisco 
+es_J <- b_J %>%
+  group_by(EDAD) %>%
+  summarise(
+    Promedio_Siniestros = mean(NUMERO_DE_SINIESTROS, na.rm = TRUE),
+    No_Personas = n()
+  ) %>%
+  arrange(EDAD)
+```
+
+
+```{r, echo=FALSE}
+es_CDMX$Entidad <- "Ciudad de México"
+es_NL$Entidad   <- "Nuevo León"
+es_J$Entidad    <- "Jalisco"
+
+es_todas <- bind_rows(es_CDMX, es_NL, es_J)
+
+# Crear el gráfico
+ggplot(es_todas, aes(x = EDAD, y = Promedio_Siniestros, color = Entidad)) +
+  geom_line(linewidth = 1) +
+  geom_point(color = "#1c2d83", size = 1, alpha = 0.7) +
+  facet_wrap(~Entidad, scales = "free_x") +
+  theme_minimal()+
+  theme(plot.title = element_text(family = "serif", size = 17,
+                                  color = "#00838f", hjust = 0.5, 
+                                  vjust = -1),
+        plot.title.position = "plot",
+        legend.position = "none",
+        axis.title.x = element_text(family = "serif"),
+        axis.title.y = element_text(family = "serif"),
+        axis.text.x = element_text(size = 7),
+        axis.text.y = element_text(size = 7),
+        axis.line = element_line(color = "gray75")) +
+  labs(title = "RELACIÓN ENTRE EDAD Y PROMEDIO DE SINIESTROS\n",
+       x = "Edad",
+       y = "Promedio de Siniestros") +
+  scale_color_manual(values = c("#bbe4b5","#84cfba", "#57bec0"))
+
+```
+
+Se observa que para las tres entidades las edades de 0 a 5 años presentan el mayor promedio de siniestros, esto puede deberse a que los niños pequeños son más propensos a enfermedades o accidentes o a que existe un mayor uso de servicios médicos cubiertos por seguros para esta etapa. A medida que aumenta la edad, el promedio disminuye y se estabiliza, indicando que los adultos jóvenes y de mediana edad son menos propensos a siniestros. Para las edades más avanzadas, el promedio disminuye aún más.
+
+> A manera de resumen, puede decirse que objetivamente se cumple la idea inicial, donde se supone que, si las tres entidades tienen el mismo comportamiento, puede decirse que los demás también. Si bien, las entidades difieren en algunos aspectos, la estructura es muy similar, manteniendo una misma tendencia.
+
+## Previo a la realización del modelo  
+
+Después de haber comparado las tres entidades, es posible empezar con la implementación del modelo, para esto se debe hacer un paso previo, el cual ayudará a cumplir uno de los supuestos de la regresión cuantílica, realizar una reducción de dimensiones con un PCA para las variables numéricas, esto con el objetivo de eliminar la colinealidad entre las variables dependientes y poder ajustar el modelo cumpliendo los supuestos.
+
+```{r}
+## REDUCCIÓN DE DIMENSIONES CON PCA 
+
+#Normalizar datos
+b1_CDMX <- scale(b_CDMX [,c(-2:-5, -11)])
+
+b1_NL <- scale(b_NL [,c(-2:-5, -11)])
+
+b1_J <- scale(b_J [,c(-2:-5, -11)])
+
+#Prueba determinante
+det(cor(b1_CDMX))
+det(cor(b1_NL))
+det(cor(b1_J))
+
+#Calcular factor de adecuacion muestral Kaiser-Meyer-Olkin
+# De 0.5-0.6 mala, 0.6-0.7 adecuado y mayor de 0.7 bueno (MSA)
+psych::KMO(b1_CDMX)
+psych::KMO(b1_NL)
+psych::KMO(b1_J)
+```
+
+Aunque el determinante no es aproximadamente cero, tampoco se trata de un número muy grande. Además, la prueba de KMO arroja que los datos son adecuados y todas las variables poseen un msa mayor a 0.5, por lo que es pertinente el pca para continuar con la reducción.
+
+```{r}
+## Realizar PCA
+pca_CDMX<-princomp(b1_CDMX)
+summary(pca_CDMX)
+
+pca_NL<-princomp(b1_NL)
+summary(pca_NL)
+
+pca_J<-princomp(b1_J)
+summary(pca_J)
+```
+
+<p style="color:#0097a7; font-size:22px; text-align: center;">ANÁLISIS DE LA VARIANZA Y LOS EIGENVALORES</p>
+
+```{r, echo=FALSE}
+# Revisar varianza y eigenvalores
+
+a <- fviz_eig(pca_CDMX, choice = 'variance',
+              barfill = "#bbe4b5", barcolor = "#bbe4b5", 
+              linecolor = "#00838f", title = "CDMX")
+b <- fviz_eig(pca_NL, choice = 'variance',
+              barfill = "#84cfba", barcolor = "#84cfba", 
+              linecolor = "#00838f", title = "Nuevo León")
+c <- fviz_eig(pca_J, choice = 'variance', 
+              barfill = "#57bec0", barcolor = "#57bec0", 
+              linecolor = "#00838f", title = "Jalisco")
+a + b + c
+
+#La componente uno, dos, tres y cuatro aportan la mayor varianza
+
+d <- fviz_eig(pca_CDMX, choice = 'eigenvalue', 
+              barfill = "#bbe4b5", barcolor = "#bbe4b5", 
+              linecolor = "#00838f", title = "CDMX")
+e <- fviz_eig(pca_NL, choice = 'eigenvalue', 
+              barfill = "#84cfba", barcolor = "#84cfba", 
+              linecolor = "#00838f", title = "Nuevo León")
+f <- fviz_eig(pca_J, choice = 'eigenvalue',
+              barfill = "#57bec0", barcolor = "#57bec0", 
+              linecolor = "#00838f", title = "Jalisco")
+d + e + f
+
+```
+
+En las tres entidades los primeros 4 componentes son los que poseen una varianza acumulada de aproximadamente el 0.82. Para CDMX aportan el 0.8191, para Jalisco el 0.8117 y para Nuevo León el 0.8241. 
+
+Aunque solo tres componentes tienen eigenvalores mayores a la unidad, el cuarto se aproxima, lo que confirma la elección de los 4 factores.
+
+```{r}
+# Cargas para darle una interpretación a las variables 
+pca_CDMX$loadings[,1:4]
+pca_NL$loadings[,1:4]
+pca_J$loadings[,1:4]
+```
+
+Manteniendo un comportamiento similar por entidad, en el componente 1 tienen mayor peso las variables de monto de deducible, coaseguro y reclamado, por lo que puede ser llamado ‘componente de monto neto’. Por otra parte, el componente 2 está fuertemente representado por las variables de número de siniestros y de reclamaciones, resultando en el nombre de ‘componente de reclamaciones totales’. Finalmente, los componentes 3 y 4 se asemejan bastante, teniendo como variables principales a la edad y el monto de reaseguro, lo que las diferencia es que en el componente 3 reaseguro pesa más que edad, resultando en un comportamiento inverso para el 4, lo que ayuda a establecer que su nombre sea ‘componente de reaseguro’ y ‘componente de edad’.
+
+Después de todo el análisis realizado, se pueden extraer los 4 componentes para agregarlos a las bases de cada entidad junto con sus variables categóricas y la variable independiente.
+
+## Regresión Cuantílica  
+
+```{r}
+# Crear las bases -------------------------------------------------------
+
+bf_CDMX <-pca_CDMX$scores[,1:4]
+bf_NL <- pca_NL$scores[,1:4]
+bf_J <- pca_J$scores[,1:4]
+
+bf_CDMX <- as.data.frame(bf_CDMX)
+bf_NL <- as.data.frame(bf_NL)
+bf_J <- as.data.frame(bf_J)
+
+
+bf_CDMX <- data.frame(bf_CDMX, b_CDMX [,c(2:5, 11)] )
+bf_NL <- data.frame(bf_NL, b_NL [,c(2:5, 11)] )
+bf_J <- data.frame(bf_J, b_J [,c(2:5, 11)] )
+```
+
+Como se mencionó anteriormente, el modelo requiere de tres supuesto (no multicolinealidad perfecta, linealidad condicional de los cuantiles e independencia de las observaciones). Donde el primer supuesto se cumplió desde la realización del PCA, pues este elimina toda colinealidad posible, por otra parte, el tercero se cumplió desde un inicio ya que las reclamaciones se pueden interpretar independientes, por lo que resta comprobar la linealidad condicional, para hacerlo se usará la validación sobre la significancia del modelo, debido a que, si pasa esta prueba, se confirmará el supuesto restante.
+
+Al ser una regresión, se puede entender que se tendrá una combinación lineal que estime los montos pagados. Partiendo de esta idea, se plantea un primer modelo que considera tres cuantiles, el 0.35, 0.70 y 0.95, esto se debe a que dichos cuantiles explican donde se acumula la mayor parte de la información, un intermedio de los datos y donde se concentran los valores atípicos, respectivamente.
+
+```{r, results='hide'}
+## REGRESIÓN CUANTÍLICA ------------------------------------------------
+
+## Primer Modelo: Tres cuantiles
+
+m_CDMX <- rq(formula = MONTO_PAGADO ~ Comp.1 + Comp.2 + Comp.3 + Comp.4 +
+               TIPO_DE_SEGURO, tau = c(0.35, 0.70, 0.95),
+             data = bf_CDMX)
+
+
+m_NL <- rq(formula = MONTO_PAGADO ~ Comp.1 + Comp.2 + Comp.3 + Comp.4 +
+             TIPO_DE_SEGURO, tau = c(0.35, 0.70, 0.95),
+           data = bf_NL)
+
+
+m_J <- rq(formula = MONTO_PAGADO ~ Comp.1 + Comp.2 + Comp.3 + Comp.4 +
+          TIPO_DE_SEGURO, tau = c(0.35, 0.70, 0.95),
+          data = bf_J)
+```
+
+En el modelo se consideran los componentes extraídos del PCA y una variable adicional que es 'Tipo de seguro', pues tras diversas pruebas con distintas variables se llega a la conclusión de que este es el mejor modelo para los cuantiles elegidos en conjunto. Se procede con la ejecución de las pruebas estadísticas para validar el modelo.
+
+```{r, results='hide'}
+## Validación estadística
+
+# 1.Significancia del modelo
+# Ciudad de México 
+summary(m_CDMX, se = "ker")
+# Nuevo León
+summary(m_NL, se = "ker")
+# Jalisco
+summary(m_J, se = "ker")
+
+# 2.Comparación entre cuantiles 
+# Ciudad de México 
+anova(m_CDMX, se = "ker")
+# Nuevo León
+anova(m_NL, se = "ker")
+# Jalisco
+anova(m_J, se = "ker")
+
+# 3.Bondad de Ajuste
+rho <- function(u,tau=.5)u*(tau- (u < 0))
+# Ciudad de México 
+mn_CDMX <- rq(MONTO_PAGADO ~ 1, tau = c(0.35, 0.7,0.95) , data = bf_CDMX)
+1-m_CDMX$rho/mn_CDMX$rho
+# Nuevo Leon 
+mn_NL <- rq(MONTO_PAGADO ~ 1, tau = c(0.35, 0.7, 0.95) , data = bf_NL)
+1-m_NL$rho/mn_NL$rho
+# Jalisco
+mn_J <- rq(MONTO_PAGADO ~ 1, tau = c(0.35, 0.7,0.95) , data = bf_J)
+1-m_J$rho/mn_J$rho
+```
+
+Los resultados muestran lo siguiente en cuanto a la significancia del modelo:
+
+<img src="Imagen1.png" width="550px" style="display: block; margin: auto;" />
+
+De aquí es facil concluir que para Nuevo León y CDMX el modelo es significativamente adecuado para la mayor parte de los cuantiles, mientras que para Jalisco solo es significativo en el cuantil más pequeño.
+
+Por otra parte, en cuanto a la comparación de cuantiles se obtiene que los coeficientes son diferentes estadísticamente hablando, es decir, cada coeficiente $\beta_i$ difiere entre cada cuantil. Además el estadístico F respalda la idea de que al menos una de las variables explicativas varía significativamente entre los cuantiles.
+
+<img src="Imagen2.png" width="200px" style="display: block; margin: auto;" />
+
+Finalmente, el $R^2$ ajustado para cada cuantil es:
+
+<img src="Imagen3.png" width="400px" style="display: block; margin: auto;" />
+
+Se puede concluir que el modelo se ajusta mejor para cuantiles altos, en otras palabras, en el cuantil 0.35 el valor del R ajustado es muy bajo para cada estado, es decir el modelo presenta un ajuste débil, mientras que para el cuantil 0.7 el ajuste es considerado moderado. Finalmente, para el cuantil 0.95, el ajuste puede considerarse relativamente bueno.
+
+Con base en la premisa anterior, y tomando en cuenta la idea de que el modelado de riegos es clave para este estudio, se buscará establecer un segundo moddelo que considere únicamente cuantiles altos, pues es donde se concentran los valores extremos, por ende el mayor riesgo. Particularmente, se prestrá atención al caso de Jalisco, que si bien presentó un ajuste relativamente fuerte, la prueba de significancia arroja que el modelo no es el mejor para los cuantiles más altos, pues casi todas sus variables resultan ser NO significativas.
+
+```{r, results='hide'}
+## Segundo Modelo: Cuantil 95, analizando una variable extra
+
+m95_NL <- suppressWarnings(
+  rq(formula = MONTO_PAGADO ~ Comp.1 + Comp.2 + Comp.3 + Comp.4 +
+       TIPO_DE_SEGURO + CATEGORIA_SINIESTRO, 
+     tau = c(0.85, 0.95),
+     data = bf_NL)
+)
+
+m95_CDMX <- suppressWarnings(
+  rq(formula = MONTO_PAGADO ~ Comp.1 + Comp.2 + Comp.3 + Comp.4 +
+       TIPO_DE_SEGURO + CATEGORIA_SINIESTRO, 
+     tau = c(0.8, 0.95),
+     data = bf_CDMX)
+)
+
+m95_J <- suppressWarnings(
+  rq(formula = MONTO_PAGADO ~ Comp.1 + Comp.2 + Comp.3 + Comp.4 + 
+       TIPO_DE_SEGURO + CATEGORIA_SINIESTRO, 
+     tau = c(0.8, 0.95),
+     data = bf_J)
+)
+```
+
+En este nuevo modelo se consideran las mismas variables que en el anterior; sin embargo, se agrega la variable Categoría del Siniestro, principalmente por el interés de analizarla, pues esta no era una de las variables originales del modelo, sino una que fue creada con el objetivo de reducir las mas de 5 mil causas diferentes del siniestro. Además, los cuantiles a considerar en este modelo ahora serán el 0.8 y 0.95.
+
+```{r, results='hide'}
+## Validación estadística
+
+# 1.Significancia del modelo
+# Nuevo León
+summary(m95_NL, se = "ker")
+# Ciudad de México 
+summary(m95_CDMX, se = "ker")
+# Jalisco
+summary(m95_J, se = "ker")
+
+# 2.Comparacion entre cuantiles 
+# Nuevo León
+anova(m95_NL, se = "ker")
+# Ciudad de México 
+anova(m95_CDMX, se = "ker")
+#Jalisco
+anova(m95_J, se = "ker")
+
+# 3.Bondad de Ajuste
+# Nuevo León 
+mn95_NL <- rq(MONTO_PAGADO ~ 1, tau = c(0.8,0.95), data = bf_NL)
+1-m95_NL$rho/mn95_NL$rho
+# CDMX
+mn95_CDMX <- suppressWarnings(rq(MONTO_PAGADO ~ 1, tau = c(0.8,0.95), data = bf_CDMX))
+1-m95_CDMX$rho/mn95_CDMX$rho
+#Jalisco
+mn95_J <- rq(MONTO_PAGADO ~ 1, tau = c(0.8,0.95), data = bf_J)
+1-m95_J$rho/mn95_J$rho
+```
+
+Los resultados arrojan lo siguiente en cuanto a la significancia del modelo:<br><br>
+
+<img src="Imagen4.png" width="400px" style="display: block; margin: auto;" />
+
+
+De aquí es facil concluir que para el cuantil 0.95 de CDMX el modelo anterior es más significativo, Nuevo León sigue presentando el mismo nivel de significancia, mientras que para el caso de Jalisco notamos una mejor estimación gracias a la nueva variable.  
+
+Ahora bien, en cuanto a la comparación de cuantiles se obtiene que cada coeficiente $\beta_i$ difiere entre cada cuantil. Además, el estadístico F respalda el hecho de que en el nuevo modelo, específicamente para el caso de Jalisco, al menos una de las variables explicativas varía significativamente entre los cuantiles.
+
+
+<img src="Imagen5.png" width="200px" style="display: block; margin: auto;" />
+
+
+Finalmente, el $R^2$ ajustado para cada cuantil es:
+
+
+<img src="Imagen6.png" width="350px" style="display: block; margin: auto;" />
+
+
+Se confirma que el modelo se ajusta mejor para cuantiles altos, es fácil notarlo en el cuantil 0.95, donde para cada entidad el ajuste es relativamente mayor.
+
+# Conclusiones
+
+Este proyecto ofrece una visión detallada del comportamiento del monto pagado en seguros de Gastos Médicos Individuales, con base en datos reales obtenidos de la CNSF correspondientes al año 2023. A través de la construcción de nuevas variables, el uso de técnicas de reducción de dimensionalidad (PCA) y el ajuste de modelos de regresión cuantílica, fue posible identificar patrones claros entre el monto pagado y el resto de las variables disponibles.
+
+Tomando como referencia el objetivo general de estimar el comportamiento del monto en diversos cuantiles para las tres entidades más representativas del país, se desarrollaron dos modelos. El primero es más preciso para escenarios donde se concentra la mayor parte de la dispersión de los datos y el segundo se enfoca en los casos extremos, permitiendo así una estimación robusta según el contexto de análisis.
+
+En general, ambos modelos comparten como variables independientes las componentes numéricas generadas mediante PCA. Esto implica que todas las variables cualitativas fueron transformadas previamente para eliminar su colinealidad. Una variable adicional compartida por ambos modelos es ‘Tipo de seguro’. El hecho de que las variables generadas por el PCA resulten significativas en todos los modelos sugiere un análisis bien estructurado, a su vez, un buen trabajo en la reducción de dimensiones. Esto permitió realizar estimaciones con menos variables de las que se tenían originalmente, pero sin perder información, lo cual corrobora que los cuatro componentes principales capturaron la varianza necesaria para explicar la variable de interés.
+
+Profundizando en el primer modelo, un hallazgo interesante es que, para los cuantiles 0.35 y 0.65, la variable ‘Tipo de pago’ penaliza de forma positiva en todos sus niveles; sin embargo, en el cuantil 0.95, cuando se trata de planes amplios o limitados, la penalización es negativa. Esto indica que, si en una estimación la póliza es de tipo limitado, el monto pagado tiende a disminuir en comparación con una de tipo internacional, manteniendo constantes el resto de los factores.
+
+Respecto al segundo modelo, es importante mencionar que se incorporó una variable adicional creada específicamente para reducir la alta variabilidad que generaba la variable original ‘Causas del siniestro’, la cual contaba con más de 5,000 categorías. Por tanto, esta nueva variable puede verse como un clúster manual que engloba la enorme diversidad de causas en solo 23 categorías, facilitando el análisis computacional. Precisando más sobre los resultados del este modelo, las categorías que generan la mayor penalización (es decir, incrementos en el monto pagado) son ‘Condiciones perinatales’ y ‘Malformaciones congénitas’, con coeficientes aproximados de 18,600 y 26,500 respectivamente. Esto significa que, en estimaciones donde la reclamación pertenece a alguna de estas categorías, el monto se incrementaría en dicha magnitud. Esta penalización tiene sentido, ya que dichas categorías fueron identificadas como las de mayor promedio pagado en el análisis exploratorio para las tres entidades. 
+
+Otro aspecto interesante es que el comportamiento de la variable ‘Tipo de seguro’ difiere entre los dos modelos. Mientras que en el primer modelo no mostró un efecto tan marcado, en el segundo modelo se observa que tener un tipo de seguro distinto al ‘Indemnizatorio’ implica una penalización positiva, incrementando el monto pagado.
+
+Finalmente, es relevante señalar que, con base en los análisis y modelos realizados, el sexo del asegurado no influye de forma significativa en el monto pagado, lo cual podría deberse a que ambos géneros presentan tasas similares de siniestros, o bien, a que durante el periodo analizado no hubo diferencias significativas para llegar a conclusiones sólidas. Por otro lado, aunque en el análisis exploratorio se identificó que los conceptos ‘hospitalización’, ‘aparatos ortopédicos’ y ‘honorarios de enfermeras’ tenían altos montos pagados, la variable ‘Tipo de pago’ no resultó significativa en el modelo final. Esto puede deberse a la complejidad de dicha variable o a que la muestra no fue lo suficientemente representativa para obtener resultados concluyentes para dicha variable.
+
+En resumen, después de analizar, presentar resultados, interpretarlos y ofrecer una conclusión general del proceso realizado, se puede afirmar que se cumplió el objetivo inicial: estimar el comportamiento del monto pagado en diversos cuantiles, identificando las variables más explicativas para cada uno de ellos. Se logró entender cómo estas variables influyen de manera positiva o negativa en el monto pagado, lo cual permite realizar estimaciones enfocadas en diferentes escenarios de interés. Este enfoque abre la puerta a un análisis detallado para diversos fines, ya sea en la diseño, aprobación o tarificación de pólizas, o en el análisis de valores extremos para la mitigación de riesgos y el cálculo de reservas.
+
+# Referencias
+
+<div style="font-family: serif;">&nbsp;&nbsp;&nbsp;&nbsp;Asociación Mexicana de Instituciones de Seguros. (s.f.). *Seguro de gastos médicos – Seguros de salud.* https://amissegurosdesalud.com.mx/seguro-gastos-medicos/
+
+&nbsp;&nbsp;&nbsp;&nbsp;Comisión Nacional para la Protección y Defensa de los Usuarios de Servicios Financieros. (s.f.). *Presenta CONDUSEF simulador de gastos médicos mayores.* https://www.condusef.gob.mx/?p=contenido&idc=544&idcat=1
+
+&nbsp;&nbsp;&nbsp;&nbsp;Illescas, A. (2006). *Seguro de gastos médicos mayores y su actualidad en México.* [Tesis de licenciatura]. Universidad Nacional Autónoma de México - Dirección General de Bibliotecas.
+
+&nbsp;&nbsp;&nbsp;&nbsp;Martín Escura, A. (2019). *Introducción a la regresión cuantil. Estimación y extensión a modelos no paramétricos* [Trabajo de fin de grado en Matemáticas]. Universidad de Zaragoza.
+
+&nbsp;&nbsp;&nbsp;&nbsp;Vicéns Otero, J., & Sánchez Reyes, B. (2012). *Regresión cuantílica: estimación y contrastes*. [Documento de trabajo N.º 21]. Instituto L.R. Klein – Centro GAUSS, Universidad Autónoma de Madrid. https://www.uam.es/uam/media/doc/1606862082401/regresion-cuantilica-estimacion-y-contrastes.pdf
+
+&nbsp;&nbsp;&nbsp;&nbsp;Zárate, T. (2017). *Modelo para evaluar la competitividad de productos de seguros de gastos médicos mayores individual en una aseguradora del mercado nacional.* [Tesina]. Universidad Autónoma del Estado de México.</div>
